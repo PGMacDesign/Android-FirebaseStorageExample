@@ -1,0 +1,113 @@
+{
+  "project_info": {
+    "project_number": "98680575591",
+    "firebase_url": "https://fir-testingapp-57fd1.firebaseio.com",
+    "project_id": "fir-testingapp-57fd1",
+    "storage_bucket": "fir-testingapp-57fd1.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:98680575591:android:4f368f6f1ee2e4e1",
+        "android_client_info": {
+          "package_name": "com.pgmacdesign.firebasetestingapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "98680575591-690eclpttdqv11nsatfusjdbp193otni.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.pgmacdesign.firebasetestingapp",
+            "certificate_hash": "9C97F2E4B9FC636D71D141842CE2C5BD1FBD0ED5"
+          }
+        },
+        {
+          "client_id": "98680575591-k8mh8tt5fdkck24ndtrr8b8o242bnidl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBp5yxpNDkr1scZp9Tm3ppNxISIcX5-oLQ"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 2,
+          "other_platform_oauth_client": [
+            {
+              "client_id": "98680575591-4h2j706guac0vcj38626qcifol98o9o2.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.lovelab.iphone"
+              }
+            },
+            {
+              "client_id": "98680575591-k8mh8tt5fdkck24ndtrr8b8o242bnidl.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:98680575591:android:dbb6162cc300f41c",
+        "android_client_info": {
+          "package_name": "com.pgmacdesign.firebasestorageexample"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "98680575591-3dk14habcr9udgk3floou64t236j24i3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.pgmacdesign.firebasestorageexample",
+            "certificate_hash": "BE3B9750603CEB5B962F50DF676ABF6658F629F8"
+          }
+        },
+        {
+          "client_id": "98680575591-k8mh8tt5fdkck24ndtrr8b8o242bnidl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBp5yxpNDkr1scZp9Tm3ppNxISIcX5-oLQ"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 2,
+          "other_platform_oauth_client": [
+            {
+              "client_id": "98680575591-4h2j706guac0vcj38626qcifol98o9o2.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.lovelab.iphone"
+              }
+            },
+            {
+              "client_id": "98680575591-k8mh8tt5fdkck24ndtrr8b8o242bnidl.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
