@@ -4,50 +4,33 @@
     android:id="@+id/activity_main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:paddingBottom="@dimen/activity_vertical_margin"
-    android:paddingLeft="@dimen/activity_horizontal_margin"
-    android:paddingRight="@dimen/activity_horizontal_margin"
-    android:paddingTop="@dimen/activity_vertical_margin"
     tools:context="com.pgmacdesign.firebasestorageexample.MainActivity">
 
-    <TextView
+
+    <Button
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Hello World!"
-        android:gravity="center"
-        android:id="@+id/text_display" />
+        android:layout_margin="32dp"
+        android:text="Upload and Download Pictures"
+        android:id="@+id/open_upload_download_activity_button"
 
-    <Button
-        android:text="Upload Picture From Url"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@+id/text_display"
-        android:layout_centerHorizontal="true"
-        android:id="@+id/upload_picture" />
-
-    <Button
-        android:text="Upload Picture From Gallery"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@+id/upload_picture"
-        android:layout_centerHorizontal="true"
-        android:id="@+id/upload_picture_local" />
-
-    <Button
-        android:text="Download picture from Firebase"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:id="@+id/download_picture"
-        android:layout_centerHorizontal="true"
-        android:layout_below="@+id/upload_picture_local"
         />
 
-    <ImageView
-        android:layout_width="100dp"
-        android:layout_height="100dp"
-        android:id="@+id/image_view_for_download"
-        android:layout_centerHorizontal="true"
-        android:layout_below="@+id/download_picture"
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="32dp"
+        android:text="View Dynamic Images"
+        android:layout_below="@+id/open_upload_download_activity_button"
+        android:id="@+id/view_dev_chosen_images_button"
+        />
 
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="32dp"
+        android:text="Set or View a Profile Photo"
+        android:id="@+id/profile_picture_button"
+        android:layout_below="@+id/view_dev_chosen_images_button"
         />
 </RelativeLayout>

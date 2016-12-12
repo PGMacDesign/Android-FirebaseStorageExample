@@ -1,0 +1,1407 @@
+Firebase is quickly becoming one of Google's hottest new platforms with a huge number of features and services available to devs; most of them for free! Ravi has already done some amazing tutorials on Firebase including [Getting started] (http://www.androidhive.info/2016/06/android-getting-started-firebase-simple-login-registration-auth/), [Realtime Database](http://www.androidhive.info/2016/10/android-working-with-firebase-realtime-database/), [Analytics] (http://www.androidhive.info/2016/06/android-firebase-integrate-analytics/), and [Cloud Messaging] (http://www.androidhive.info/2012/10/android-push-notifications-using-google-cloud-messaging-gcm-php-and-mysql/). I highly recommend you read those as some of the information in this tutorial will be linked to knowledge gained from that one.
+
+In continuing with the Firebase bandwagon, today we will be going into Firebase Cloud Storage. First off, what is it? 
+
+"Firebase Storage is built for app developers who need to store and serve user-generated content, such as photos or videos." From their [Docs](https://firebase.google.com/docs/storage/). It serves as a databse for storing data that can be uploaded and downloaded using the Firebase SDK. There are quite a few reasons why this would be useful to you as a developer; to give you some examples:
+
+1) You want to store 5gb of photos to show users but you don't want to bloat up your apk and you don't want to pay for / setup a server.
+
+2) You want to allow users to save a "profile photo" for your app and persist it.
+
+3) You want the ability to dynamically update photos for users depending on the situation but don't want to force them to update the app.
+
+The list could go on for a while, but let's focus on these 3 in the tutorial. 
+
+First, before we get into making the actual app, let's quickly discuss any costs associated with firebase. The Firebase free tier is rather generous in that it allow you to persist 5gb of data for free without any plan at all: ( https://firebase.google.com/docs/storage/ ) There are other paid tiers which allow for more usage if you develop a need for that. 
+(SEE IMAGE - 09_firebase_pricing) 
+
+Let's get to it! First thing's first, make a new app and name it whatever you please. For min API version, I am going to use 16 as it covers 19/20 Android devices on the planet. Once the app has been created, we first need to adjust the manifest to add the internet and write external storage permissions in there. (SEE IMAGE - 01_manifest_permissions)
+
+```Java
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+```	
+
+Last thing we need is the SHA1 key. If you already have this, great! If not, follow [this](http://www.truiton.com/2015/04/obtaining-sha1-fingerprint-android-keystore/) tutorial to get the SHA1.
+	
+Now that this is done, go to the (firebase console website)[https://console.firebase.google.com/] and let's create a project [SEE IMAGE - 02_create_firebase_project] and you will load into the firebase web console [SEE IMAGE - 03_firebase_console].
+
+Click on "Add Firebase To your Android App", type in the package name, nickname, and copy in the SHA1 key. Once done, you will get a popup to download the google-services.json file as well as instructions as to where it goes. It should be placed in the app directory.
+
+From here we want to click on Storage on the left-hand side. There should be no files in the first tab, but, you will notice that you can upload files directly via the web gui. Click on to the second tab, rules, to open the permissions file. I am not going to go into much detail here as there is an entire tutorial's worth of info on the concept of read/ write permissions and authentication (Plus, Ravi has a great tutorial that already covers it [here](http://www.androidhive.info/2016/10/android-working-with-firebase-realtime-database/)), for now, simply just set the code to allow for read / write access without authentication.
+
+```Java
+service firebase.storage {
+  match /b/com-pgmacdesign-androidtest2.appspot.com/o {
+    match /{allPaths=**} {
+      allow read, write
+    }
+  }
+}
+```
+
+What this means is that anyone with your link ( com-pgmacdesign-androidtest2.appspot.com ) can upload or download anything without authentication. For normal projects, you will want to have authentication in place so you don't have security concerns. 
+
+Now that we have everything configured, let's go back into our Android Studio project and add the dependencies needed. First, in the Project-level build.gradle (<project>/build.gradle), add this bit of code:
+
+```Java
+buildscript {
+  dependencies {
+    // Add this line. It should be right below the classpath declaration for gradle. 
+    classpath 'com.google.gms:google-services:3.0.0'
+  }
+}
+```
+
+Next, in your app-level build.gradle (<project>/<app-module>/build.gradle), add this to the very bottom:
+
+```Java
+	// Add to the bottom of the file
+	apply plugin: 'com.google.gms.google-services'
+```
+
+And in your android section, add these dependencies:
+
+```Java
+android {
+    dependencies {
+
+        //Firebase
+        compile 'com.google.firebase:firebase-core:10.0.1'
+        compile 'com.google.firebase:firebase-storage:10.0.1'
+        compile 'com.firebaseui:firebase-ui-storage:0.6.0'
+    }
+}
+```
+
+Note! It should be said that as of the time I wrote this (December, 2016), 10.0.1 was the newest version. 
+
+After that, hit sync and wait for it to finish. It is right around here that you might see this infamous error: (SEE IMAGE - 04_gradle_error)
+If you get that error, it simply means you need to update some of the tools in the SDK. Just follow this image (SEE IMAGE - 05_google_build_tools) and you should be fine. 
+
+Ok, now let's make the Classes and UI. First class I want to make is a Utilities class that we will be using throughout the app:
+
+```Java
+
+import android.content.ContentUris;
+import android.content.Context;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
+
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageMetadata;
+
+import java.util.Map;
+
+/**
+ * Created by PGMacDesign on 2016/12/11.
+ */
+public class MyUtilities {
+
+    public static final String CONTENT_TYPE_IMAGE = "image/jpg";
+
+    public static final String FILE_STRUCTURE_TOP_LEVEL = "images";
+    public static final String FILE_STRUCTURE_PROFILE_PHOTOS =
+            FILE_STRUCTURE_TOP_LEVEL + "/profile_photos";
+    public static final String FILE_STRUCTURE_DYNAMIC_PHOTOS =
+            FILE_STRUCTURE_TOP_LEVEL + "/dynamic";
+    public static final String FILE_STRUCTURE_UPLOAD_DOWNLOAD_PHOTOS =
+            FILE_STRUCTURE_TOP_LEVEL + "/upload_download";
+
+    public static final String BUCKET_URL = "gs://fir-storage-testing.appspot.com";
+
+
+    private static FirebaseStorage storage;
+    public static FirebaseStorage getFirebaseStorageInstance(){
+        if(storage == null){
+            storage = FirebaseStorage.getInstance();
+        }
+        return storage;
+    }
+
+    public static StorageMetadata buildFileMetadata(String contentType,
+                                                    Map<String, String> tags){
+
+        StorageMetadata.Builder builder = new StorageMetadata.Builder();
+
+        if(contentType == null){
+            contentType = "N/A";
+        }
+        builder.setContentType(contentType);
+
+        if(tags != null){
+            for(Map.Entry<String, String> aMap : tags.entrySet()){
+                String key = aMap.getKey();
+                String value = aMap.getValue();
+                builder.setCustomMetadata(key, value);
+            }
+        }
+
+        StorageMetadata storageMetadata = builder.build();
+        return storageMetadata;
+    }
+
+
+    /*
+    From:
+    http://stackoverflow.com/questions/19834842/android-gallery-on-kitkat-returns-different-uri-for-intent-action-get-content
+     */
+    public static String getPath(final Context context, final Uri uri) {
+
+        final boolean isKitKat = Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT;
+
+        // DocumentProvider
+        if (isKitKat && DocumentsContract.isDocumentUri(context, uri)) {
+            // ExternalStorageProvider
+            if (isExternalStorageDocument(uri)) {
+                final String docId = DocumentsContract.getDocumentId(uri);
+                final String[] split = docId.split(":");
+                final String type = split[0];
+
+                if ("primary".equalsIgnoreCase(type)) {
+                    return Environment.getExternalStorageDirectory() + "/" + split[1];
+                }
+
+                // TODO handle non-primary volumes
+            }
+            // DownloadsProvider
+            else if (isDownloadsDocument(uri)) {
+
+                final String id = DocumentsContract.getDocumentId(uri);
+                final Uri contentUri = ContentUris.withAppendedId(
+                        Uri.parse("content://downloads/public_downloads"), Long.valueOf(id));
+
+                return getDataColumn(context, contentUri, null, null);
+            }
+            // MediaProvider
+            else if (isMediaDocument(uri)) {
+                final String docId = DocumentsContract.getDocumentId(uri);
+                final String[] split = docId.split(":");
+                final String type = split[0];
+
+                Uri contentUri = null;
+                if ("image".equals(type)) {
+                    contentUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+                } else if ("video".equals(type)) {
+                    contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+                } else if ("audio".equals(type)) {
+                    contentUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+                }
+
+                final String selection = "_id=?";
+                final String[] selectionArgs = new String[] {
+                        split[1]
+                };
+
+                return getDataColumn(context, contentUri, selection, selectionArgs);
+            }
+        }
+        // MediaStore (and general)
+        else if ("content".equalsIgnoreCase(uri.getScheme())) {
+
+            // Return the remote address
+            if (isGooglePhotosUri(uri))
+                return uri.getLastPathSegment();
+
+            return getDataColumn(context, uri, null, null);
+        }
+        // File
+        else if ("file".equalsIgnoreCase(uri.getScheme())) {
+            return uri.getPath();
+        }
+
+        return null;
+    }
+
+    public static String getDataColumn(Context context, Uri uri, String selection,
+                                       String[] selectionArgs) {
+        Cursor cursor = null;
+        final String column = "_data";
+        final String[] projection = {
+                column
+        };
+
+        try {
+            cursor = context.getContentResolver().query(uri, projection, selection, selectionArgs,
+                    null);
+            if (cursor != null && cursor.moveToFirst()) {
+                final int index = cursor.getColumnIndexOrThrow(column);
+                return cursor.getString(index);
+            }
+        } finally {
+            if (cursor != null)
+                cursor.close();
+        }
+        return null;
+    }
+
+    public static boolean isExternalStorageDocument(Uri uri) {
+        return "com.android.externalstorage.documents".equals(uri.getAuthority());
+    }
+
+    public static boolean isDownloadsDocument(Uri uri) {
+        return "com.android.providers.downloads.documents".equals(uri.getAuthority());
+    }
+
+    public static boolean isMediaDocument(Uri uri) {
+        return "com.android.providers.media.documents".equals(uri.getAuthority());
+    }
+
+    public static boolean isGooglePhotosUri(Uri uri) {
+        return "com.google.android.apps.photos.content".equals(uri.getAuthority());
+    }
+
+}
+
+```
+
+First and most important, replace the "BUCKET_URL" with your own appspot url. These methods are used throughout the app in different ways. 
+
+First, the getInstance method is designed around a singleton object so as to minimize wasted memory. We can get the FirebaseStorage object, instantiate it if it is already not ready, and then return it. The metadata method will be referenced and explained later on in the code. 
+
+The other set of methods is designed to convert a standard Image Uri (content://LOCATION) into a readible file uri that we can use to upload pictures. This is from a StackOverdlow post which I have linked in the code. 
+
+Next, let's make the Main Activity:
+
+```Java
+
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
+import android.support.v7.app.AppCompatActivity;
+import android.view.View;
+import android.widget.Button;
+
+public class MainActivity extends AppCompatActivity implements View.OnClickListener {
+
+    private Button open_upload_download_activity_button, view_dynamic_images_button,
+            profile_picture_button;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        initUI();
+    }
+
+    private void initUI(){
+        this.profile_picture_button = (Button) this.findViewById(
+                R.id.profile_picture_button);
+        this.open_upload_download_activity_button = (Button) this.findViewById(
+                R.id.open_upload_download_activity_button);
+        this.view_dynamic_images_button = (Button) this.findViewById(
+                R.id.view_dev_chosen_images_button);
+
+        this.profile_picture_button.setTransformationMethod(null);
+        this.open_upload_download_activity_button.setTransformationMethod(null);
+        this.view_dynamic_images_button.setTransformationMethod(null);
+
+        this.profile_picture_button.setOnClickListener(this);
+        this.open_upload_download_activity_button.setOnClickListener(this);
+        this.view_dynamic_images_button.setOnClickListener(this);
+    }
+
+    @Override
+    public void onClick(View v) {
+        if(ActivityCompat.checkSelfPermission(this,
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED){
+            //This means we don't have permission to access storage, so we need to request if first
+            requestPermissions();
+            return;
+        }
+
+        Intent intent = null;
+        switch (v.getId()){
+            case R.id.profile_picture_button:
+                intent = new Intent(MainActivity.this, ProfilePhoto.class);
+                break;
+
+            case R.id.open_upload_download_activity_button:
+                intent = new Intent(MainActivity.this, UploadDownloadPictures.class);
+                break;
+
+            case R.id.view_dev_chosen_images_button:
+                intent = new Intent(MainActivity.this, ViewDynamicImages.class);
+                break;
+
+        }
+
+        if(intent != null){
+            startActivity(intent);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+    }
+
+    private void requestPermissions(){
+        ActivityCompat.requestPermissions(MainActivity.this,
+                new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 22);
+    }
+}
+
+```
+
+And it's respective UI:
+
+```Xml
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/activity_main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="com.pgmacdesign.firebasestorageexample.MainActivity">
+
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="32dp"
+        android:text="Upload and Download Pictures"
+        android:id="@+id/open_upload_download_activity_button"
+
+        />
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="32dp"
+        android:text="View Dynamic Images"
+        android:layout_below="@+id/open_upload_download_activity_button"
+        android:id="@+id/view_dev_chosen_images_button"
+        />
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="32dp"
+        android:text="Set or View a Profile Photo"
+        android:id="@+id/profile_picture_button"
+        android:layout_below="@+id/view_dev_chosen_images_button"
+        />
+</RelativeLayout>
+
+```
+
+What this activity does is simply serve as a launching board for whichever direction we want to test. This class has no interaction with Firebase and instead passes that reponsibility to the other activities. Note that we are requesting Write access permissions from the User else we prevent them from continuing. [Rivi Chakraborty recently wrote an article](http://www.androidhive.info/2016/11/android-working-marshmallow-m-runtime-permissions/) on Marshmallow permissions so I recommend you check that out for more info on making them cleaner and better written.
+
+Let's next jump into the UploadDownloadPictures class. Code is here:
+
+```Java
+
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v7.app.AppCompatActivity;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.storage.FileDownloadTask;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.UploadTask;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Created by PGMacDesign on 2016/12/11.
+ */
+public class UploadDownloadPictures extends AppCompatActivity implements View.OnClickListener {
+
+    //Firebase
+    private FirebaseStorage storage;
+    private StorageReference storageRef;
+    private UploadTask uploadTask;
+    private File fileToDownload;
+
+    //UI
+    private EditText picture_title_et;
+    private Button upload_picture_button, download_picture_button;
+    private TextView upload_picture_tv, download_picture_tv;
+    private ImageView download_picture_iv;
+
+    //Variables
+    private String userChosenString;
+
+    //Tags
+    private static final int TAKE_PHOTO_TAG = 123;
+
+    @Override
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.upload_download_pictures);
+
+        initVariables();
+        initUI();
+        initFirebase();
+    }
+
+    private void initVariables(){
+        this.userChosenString = null;
+    }
+
+    private void initUI(){
+
+        this.picture_title_et = (EditText) this.findViewById(R.id.picture_title_et);
+        this.upload_picture_button = (Button) this.findViewById(R.id.upload_picture_button);
+        this.download_picture_button = (Button) this.findViewById(R.id.download_picture_button);
+        this.upload_picture_tv = (TextView) this.findViewById(R.id.upload_picture_tv);
+        this.download_picture_tv = (TextView) this.findViewById(R.id.download_picture_tv);
+        this.download_picture_iv = (ImageView) this.findViewById(R.id.download_picture_iv);
+
+        this.download_picture_button.setTransformationMethod(null);
+        this.upload_picture_button.setTransformationMethod(null);
+
+        this.download_picture_button.setOnClickListener(this);
+        this.upload_picture_button.setOnClickListener(this);
+    }
+
+    private void initFirebase(){
+        this.storage = MyUtilities.getFirebaseStorageInstance();
+        this.storageRef = storage.getReference();
+        this.uploadTask = null;
+    }
+
+    private void downloadPicture(){
+        this.storageRef = storageRef.getRoot()
+                .child(MyUtilities.FILE_STRUCTURE_UPLOAD_DOWNLOAD_PHOTOS)
+                .child(userChosenString);
+        fileToDownload = null;
+        try {
+            fileToDownload = File.createTempFile("my_image", "jpg");
+        } catch (IOException ioe){
+            ioe.printStackTrace();
+        }
+        if(fileToDownload != null){
+            this.storageRef.getFile(fileToDownload).addOnSuccessListener(
+                            new OnSuccessListener<FileDownloadTask.TaskSnapshot>() {
+                                @Override
+                                public void onSuccess(FileDownloadTask.TaskSnapshot taskSnapshot) {
+                                    download_picture_tv.setText("Download Successful");
+                                    download_picture_iv.setImageURI(Uri.fromFile(fileToDownload));
+                                }
+                            }
+                    ).addOnFailureListener(new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception e) {
+                            download_picture_tv.setText("Download Failed");
+                            e.printStackTrace();
+                        }
+                    });
+        }
+    }
+
+    private void uploadPictureViaFile(File file){
+
+        if(file == null){
+            return;
+        }
+
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("user_chosen_title", userChosenString);
+
+        this.storageRef = storageRef.getRoot()
+                .child(MyUtilities.FILE_STRUCTURE_UPLOAD_DOWNLOAD_PHOTOS)
+                .child(userChosenString);
+        uploadTask = storageRef.putFile(Uri.fromFile(file),
+                MyUtilities.buildFileMetadata(MyUtilities.CONTENT_TYPE_IMAGE, nameMap));
+
+        uploadTask.addOnSuccessListener(
+                        new OnSuccessListener<UploadTask.TaskSnapshot>() {
+                            @Override
+                            public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
+                                Uri downloadUrl = taskSnapshot.getDownloadUrl();
+                                if(downloadUrl != null){
+                                    upload_picture_tv.setText("Success! Photo Uploaded");
+                                } else {
+                                    upload_picture_tv.setText("Failure! Photo Not Uploaded");
+                                }
+                            }
+                        }
+                )
+                .addOnFailureListener(
+                        new OnFailureListener() {
+                            @Override
+                            public void onFailure(@NonNull Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
+                );
+    }
+
+
+    @Override
+    public void onClick(View v) {
+
+        //First check if the Edit text field is filled out. If it is not, toast and break
+        String str = picture_title_et.getText().toString();
+        if(str.isEmpty()){
+            Toast.makeText(this, "Please enter a picture title", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        this.userChosenString = str;
+        switch (v.getId()){
+            case R.id.upload_picture_button:
+
+                if (Build.VERSION.SDK_INT < 19){
+                    Intent intent = new Intent();
+                    intent.setType("image/*");
+                    intent.setAction(Intent.ACTION_GET_CONTENT);
+                    startActivityForResult(Intent.createChooser(
+                            intent, "Choose a Picture to Upload"), TAKE_PHOTO_TAG);
+                } else {
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("image/*"); //image/jpeg
+                    startActivityForResult(intent, TAKE_PHOTO_TAG);
+                }
+                break;
+
+            case R.id.download_picture_button:
+                downloadPicture();
+                break;
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if(resultCode == this.RESULT_OK){
+            if(requestCode == TAKE_PHOTO_TAG){
+                try {
+                    Uri uri = data.getData();
+                    String newUri = MyUtilities.getPath(UploadDownloadPictures.this, uri);
+                    File file = new File(newUri);
+                    uploadPictureViaFile(file);
+                } catch (Exception e){
+                    upload_picture_tv.setText("Upload Failed!");
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        resumeUpload();
+    }
+
+    //These methods are here just for visual. This is how you would resume, pause, or stop an upload
+
+    private void resumeUpload(){
+        if(uploadTask != null){
+            uploadTask.resume();
+        }
+    }
+
+    private void pauseUpload(){
+        if(uploadTask != null){
+            uploadTask.pause();
+        }
+    }
+
+    private void cancelUpload(){
+        if(uploadTask != null){
+            uploadTask.cancel();
+        }
+    }
+
+}
+
+```
+
+And the layout xml:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <EditText
+        android:id="@+id/picture_title_et"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+
+        android:hint="Picture Title" />
+
+    <View
+        android:id="@+id/divider2"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_below="@+id/picture_title_et"
+        android:background="@color/black" />
+
+    <LinearLayout
+        android:id="@+id/upload_picture_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/divider2"
+        android:orientation="horizontal"
+        android:weightSum="100">
+
+        <Button
+            android:id="@+id/upload_picture_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="50"
+            android:text="Upload Photo From Gallery" />
+
+        <TextView
+            android:id="@+id/upload_picture_tv"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="50"
+            android:gravity="end"
+            android:text="" />
+
+    </LinearLayout>
+
+    <View
+        android:id="@+id/divider1"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_below="@+id/upload_picture_layout"
+        android:background="@color/black" />
+
+    <LinearLayout
+        android:id="@+id/download_picture_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/divider1"
+        android:orientation="horizontal"
+        android:weightSum="100">
+
+        <Button
+            android:id="@+id/download_picture_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="50"
+            android:text="Download Photo From Storage" />
+
+        <TextView
+            android:id="@+id/download_picture_tv"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="50"
+            android:gravity="end"
+            android:text="" />
+
+    </LinearLayout>
+
+    <View
+        android:id="@+id/divider3"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_below="@+id/download_picture_layout"
+        android:background="@color/black" />
+
+    <ImageView
+        android:id="@+id/download_picture_iv"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@+id/divider3"
+        android:scaleType="fitXY" />
+
+
+</RelativeLayout>
+```
+
+So let's go through this class. First, we setup variables and ui (standard stuff). After that we setup firebase. Now we are getting an instance of FirebaseStorage and then we are setting up the storage ref. So what is the purpose of this storage ref? The storage ref is essentially a pointer to a directory within the database. You see, the database structure / style matches Firebase Realtime Database [Ravi's Tutorial here on that](http://www.androidhive.info/2016/10/android-working-with-firebase-realtime-database/), and has a tree or hierarchial view. When you see the code that calls:
+
+```Java
+        this.storageRef = storageRef.getRoot()
+                .child(MyUtilities.FILE_STRUCTURE_UPLOAD_DOWNLOAD_PHOTOS)
+                .child(userChosenString);
+```
+
+What is happening is we are getting the root directory, then going 2 "levels" deeper by setting the children. The result is that you now have a reference to the same database you did before, but you are not nesting the file you are about to upload 2 levels deep so that if you, for example, type "Test" in the edit text and then upload an image, it will look like this within the web GUI:
+(SEE IMAGE - 06_nested_structure_display) 
+
+If we were thinking about this in a file explorer fashion, we uploaded a photo under the 'upload_download' directory, which is nested underneath the 'images' directory, which is nested underneat the Root directory ('gs://fir-storage-testing.appspot.com'). This sorting style becomes exceptionally useful when you want to partition off sections so that you can give different people access to different sections or just want to compartmentalize your app like we are doing here. 
+
+So what is actually happening in this page is as follows: user enters the name of the image they are uploading, they upload the image and it puts it into the Storage database with the name they chose, then if a user wants to see it, they would simply hit the download button and it would appear in the ImageView. 
+
+Keep in mind that if you and I were using the app and I named a picture Test and then you named a picture test and uploaded it, yours would overwrite mine. It is therefore recommended that you maintain some type of Unique Identifier (a String, a long, whatever) and attach it to the file name (prefix or suffix). This should prevent problems from arising with duplicate names. 
+
+Although they are not being used, I wanted to include the code for resuming / pausing / and stopping an upload. Near the bottom of the class we have those methods which will do those 3 things I just mentioned. One really cool thing about this SDK is that the images will continue to upload if you tell them to with the resume function. This is extremely useful for large file types. The fact that you could also stop the upload by canceling it is also quite nice as it gives your users the option to if they wish. 
+
+One last thing to talk about on this page, you may have noticed the "MetaData" tag in there where we are setting the meta data. What the heck is that all about? It is mostly for logging and sorting purposes, but still useful nonetheless. In this 'Test' example we have been using, we set the user_chosen_title as 'Test'. If you go to the Firebase web GUI, here is what you will see with regards to that:
+(IMAGE - SEE 07_metadata_sample)
+
+This will be more useful on the next section where we are storing names. Let's move on to that one now. The next class we are working on is ProfilePhoto:
+
+```Java
+
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v7.app.AppCompatActivity;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.storage.FileDownloadTask;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.UploadTask;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Created by PGMacDesign on 2016/12/11.
+ */
+public class ProfilePhoto extends AppCompatActivity implements View.OnClickListener{
+
+    //Firebase
+    private FirebaseStorage storage;
+    private StorageReference storageRef;
+    private UploadTask uploadTask;
+    private File fileToDownload;
+
+    //UI
+    private ImageView profile_photo;
+    private Button download_profile_picture, upload_profile_picture;
+    private EditText last_name_et, first_name_et;
+    private TextView upload_profile_picture_tv, download_profile_picture_tv;
+
+    //Variables
+    private String userFirstName, userLastName;
+
+    //Tags
+    private static final int TAKE_PHOTO_TAG = 123;
+
+    @Override
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.profile_photo);
+
+        initVariables();
+        initUI();
+        initFirebase();
+    }
+
+
+    private void initVariables(){
+        this.userFirstName = this.userLastName = null;
+    }
+
+    private void initUI(){
+
+        this.profile_photo = (ImageView) this.findViewById(R.id.profile_photo);
+        this.download_profile_picture = (Button) this.findViewById(R.id.download_profile_picture);
+        this.upload_profile_picture = (Button) this.findViewById(R.id.upload_profile_picture);
+        this.last_name_et = (EditText) this.findViewById(R.id.last_name_et);
+        this.first_name_et = (EditText) this.findViewById(R.id.first_name_et);
+        this.upload_profile_picture_tv = (TextView) this.findViewById(R.id.upload_profile_picture_tv);
+        this.download_profile_picture_tv = (TextView) this.findViewById(R.id.download_profile_picture_tv);
+
+        this.download_profile_picture.setTransformationMethod(null);
+        this.upload_profile_picture.setTransformationMethod(null);
+
+        this.download_profile_picture.setOnClickListener(this);
+        this.upload_profile_picture.setOnClickListener(this);
+    }
+
+    private void initFirebase(){
+        this.storage = FirebaseStorage.getInstance();
+        this.storageRef = storage.getReference();
+        this.uploadTask = null;
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if(resultCode == RESULT_OK){
+            if(requestCode == TAKE_PHOTO_TAG){
+                try {
+                    Uri uri = data.getData();
+                    String newUri = MyUtilities.getPath(ProfilePhoto.this, uri);
+                    File file = new File(newUri);
+                    uploadPictureViaFile(file);
+                } catch (Exception e){
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onClick(View v) {
+
+        //First check if the Edit text fields are filled out. If they are not, toast and break
+        String str = first_name_et.getText().toString();
+        String str1 = last_name_et.getText().toString();
+        if(str1.isEmpty() || str.isEmpty()){
+            Toast.makeText(this, "Please enter a first and last name for your profile picture",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        this.userFirstName = str;
+        this.userLastName = str1;
+
+        switch (v.getId()){
+            case R.id.download_profile_picture:
+                downloadPicture();
+                break;
+
+            case R.id.upload_profile_picture:
+                if (Build.VERSION.SDK_INT < 19){
+                    Intent intent = new Intent();
+                    intent.setType("image/*");
+                    intent.setAction(Intent.ACTION_GET_CONTENT);
+                    startActivityForResult(Intent.createChooser(
+                            intent, "Choose a Picture to Upload"), TAKE_PHOTO_TAG);
+                } else {
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("image/*"); //image/jpeg
+                    startActivityForResult(intent, TAKE_PHOTO_TAG);
+                }
+                break;
+        }
+    }
+
+    private void downloadPicture(){
+        this.storageRef = storageRef.getRoot()
+                .child(MyUtilities.FILE_STRUCTURE_PROFILE_PHOTOS)
+                .child(userFirstName + "_" + userLastName);
+        fileToDownload = null;
+        try {
+            fileToDownload = File.createTempFile("my_image", "jpg");
+        } catch (IOException ioe){
+            ioe.printStackTrace();
+        }
+        download_profile_picture_tv.setText("");
+        if(fileToDownload != null){
+            this.storageRef.getFile(fileToDownload).addOnSuccessListener(
+                    new OnSuccessListener<FileDownloadTask.TaskSnapshot>() {
+                        @Override
+                        public void onSuccess(FileDownloadTask.TaskSnapshot taskSnapshot) {
+                            download_profile_picture_tv.setText("Success! Your photo has been downloaded");
+                            profile_photo.setImageURI(Uri.fromFile(fileToDownload));
+                        }
+                    }
+            )
+                    .addOnFailureListener(new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception e) {
+                            download_profile_picture_tv.setText("Failure! Could not download photo");
+                            e.printStackTrace();
+                        }
+                    });
+        }
+    }
+
+    private void uploadPictureViaFile(File file){
+        if(file == null){
+            return;
+        }
+
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("firstName", userFirstName);
+        nameMap.put("lastName", userLastName);
+
+        upload_profile_picture_tv.setText("");
+
+        this.storageRef = storageRef.getRoot()
+                .child(MyUtilities.FILE_STRUCTURE_PROFILE_PHOTOS)
+                .child(userFirstName + "_" + userLastName);
+        uploadTask = storageRef.putFile(Uri.fromFile(file),
+                MyUtilities.buildFileMetadata(MyUtilities.CONTENT_TYPE_IMAGE, nameMap));
+
+        uploadTask.addOnSuccessListener(
+                new OnSuccessListener<UploadTask.TaskSnapshot>() {
+                    @Override
+                    public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
+                        Uri downloadUrl = taskSnapshot.getDownloadUrl();
+                        if(downloadUrl != null){
+                            upload_profile_picture_tv.setText("Success!");
+                        } else {
+                            upload_profile_picture_tv.setText("Failure!");
+                        }
+                    }
+                }).addOnFailureListener(
+                        new OnFailureListener() {
+                            @Override
+                            public void onFailure(@NonNull Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
+                );
+    }
+
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        resumeUpload();
+    }
+
+
+    private void resumeUpload(){
+        if(uploadTask != null){
+            uploadTask.resume();
+        }
+    }
+
+    private void pauseUpload(){
+        if(uploadTask != null){
+            uploadTask.pause();
+        }
+    }
+
+    private void cancelUpload(){
+        if(uploadTask != null){
+            uploadTask.cancel();
+        }
+    }
+
+}
+
+```
+
+And the layout code is:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+
+    <LinearLayout
+        android:id="@+id/name_et_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="100"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentStart="true">
+
+        <EditText
+            android:id="@+id/first_name_et"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="50"
+            android:hint="First Name"
+            />
+
+        <EditText
+            android:id="@+id/last_name_et"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="50"
+            android:hint="Last Name"
+            />
+
+    </LinearLayout>
+
+    <View
+        android:id="@+id/spacer1"
+        android:layout_below="@+id/name_et_layout"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/black"
+        />
+
+    <LinearLayout
+        android:id="@+id/profile_buttons"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="100"
+        android:layout_below="@+id/spacer1"
+        >
+
+        <Button
+            android:id="@+id/upload_profile_picture"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="50"
+            android:text="Upload a Picture"
+            />
+
+        <Button
+            android:id="@+id/download_profile_picture"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="50"
+            android:text="Download a Picture"
+            />
+
+    </LinearLayout>
+
+    <View
+        android:id="@+id/spacer2"
+        android:layout_below="@+id/profile_buttons"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/black"
+        />
+
+
+    <LinearLayout
+        android:id="@+id/profile_tvs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="100"
+        android:layout_below="@+id/spacer2"
+        >
+
+        <TextView
+            android:id="@+id/upload_profile_picture_tv"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:layout_weight="50"
+            android:text=""
+            />
+
+        <TextView
+            android:id="@+id/download_profile_picture_tv"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:layout_weight="50"
+            android:text=""
+            />
+
+    </LinearLayout>
+
+    <View
+        android:id="@+id/spacer3"
+        android:layout_below="@+id/profile_tvs"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/black"
+        />
+
+    <ImageView
+        android:id="@+id/profile_photo"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@+id/spacer3"
+        android:scaleType="fitXY"
+        />
+
+</RelativeLayout>
+```
+
+This sample class is designed around setting up someone's "profile" picture. It is using the exact same logic as the previous activity for uploading and downloading. The differences here are:
+1) We are using a different directory to store / upload to / download from. The directory here is the "profile_photos" String from the Utilities class. 
+2) We are using their first and last name to set the image's name as well as the metadata. 
+
+Just like the previous class, we need to get a storage reference but instead of using this path: BASE_URL/images/upload_download, we are instead going to use a different path: BASE_URL/images/profile_photos. If you want to think of it another way, think of this as another "table" in the NoSQL database that is Firebase Storage. 
+
+Here we are using the first and last name of users to easily label / tag the photos. Once a user uploads their photo here, it is saved and attached to that name. Just as in the previous class, if this were a production-level app, we would want to attach some type of UUID to the first and last name so that two different "John Smith"'s don't override their photos. 
+
+A cople of things to draw your attention to in this class that I skipped in the last class, first, you see that we added OnSuccessListener and OnFailureListener to the uploladTask object. This was done so that we could update textviews with info once the data uploaded / downloaded as well as print any issues that come out. It isn't however, required to attach listeners to the tasks for them to actually run. Aside from the Sucess and Failure listeners, we could also add OnPauseListener and OnProgressListener. The cool thing about a progress listener is that you can use it to display a progress dialog / bar to alert the users as to how long it will take to upload / download the files. It is fairly simple to implement:
+
+```Java
+uploadTask.addOnProgressListener(new OnProgressListener<UploadTask.TaskSnapshot>() {
+            @Override
+            public void onProgress(UploadTask.TaskSnapshot taskSnapshot) {
+                long bytesTransferred = taskSnapshot.getBytesTransferred();
+                long bytesTotal = taskSnapshot.getTotalByteCount();
+                long percentTransferred = (bytesTransferred / bytesTotal);
+                //Print the percent Transferred into progressUpdate of a progress dialog. 
+            }
+        })
+```
+
+Keep in mind that although you are showing something that updates the user as to how long this will take, the Firebase upload and download tasks are automatically done on background threads so you are not blocking the main ui thread while this is happening. If you would like to include the % upload data, I recommend just making a progress bar that is updated in the background (IE notification bar) so that it doesn't block the user's action. 
+
+The last class we have here is for dynamically changing photos. The java code is here:
+```Java
+
+import android.net.Uri;
+import android.os.Bundle;
+import android.support.annotation.Nullable;
+import android.support.v7.app.AppCompatActivity;
+import android.widget.ImageView;
+
+import com.bumptech.glide.Glide;
+import com.firebase.ui.storage.images.FirebaseImageLoader;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.storage.FileDownloadTask;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+
+import java.io.File;
+import java.io.IOException;
+
+/**
+ * Created by PGMacDesign on 2016/12/11.
+ */
+public class ViewDynamicImages extends AppCompatActivity {
+
+    //Firebase
+    private FirebaseStorage storage;
+    private StorageReference reference1, reference2, reference3, reference4;
+
+    //UI
+    private ImageView dynamic_image_iv1, dynamic_image_iv2, dynamic_image_iv3,
+            dynamic_image_iv4;
+
+    //Vars
+    File fileToDownload1, fileToDownload2, fileToDownload3, fileToDownload4;
+
+    //Final Vars
+    private static final String IMAGE_1 = "dynamic_picture_1.jpg";
+    private static final String IMAGE_2 = "dynamic_picture_2.jpg";
+    private static final String IMAGE_3 = "dynamic_picture_3.jpg";
+    private static final String IMAGE_4 = "dynamic_picture_4.jpg";
+
+    @Override
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.view_dynamic_images);
+
+        initVariables();
+        initUI();
+        initFirebase();
+        loadFourImages();
+    }
+
+    private void initVariables(){
+        fileToDownload1 = fileToDownload2 = fileToDownload3 = fileToDownload4 = null;
+    }
+
+    private void initUI() {
+        this.dynamic_image_iv1 = (ImageView) this.findViewById(R.id.dynamic_image_iv1);
+        this.dynamic_image_iv2 = (ImageView) this.findViewById(R.id.dynamic_image_iv2);
+        this.dynamic_image_iv3 = (ImageView) this.findViewById(R.id.dynamic_image_iv3);
+        this.dynamic_image_iv4 = (ImageView) this.findViewById(R.id.dynamic_image_iv4);
+    }
+
+    private void initFirebase() {
+        this.storage = MyUtilities.getFirebaseStorageInstance();
+        this.reference1 = storage.getReference().getRoot()
+                .child(MyUtilities.FILE_STRUCTURE_DYNAMIC_PHOTOS)
+                .child(IMAGE_1);
+        this.reference2 = storage.getReference().getRoot()
+                .child(MyUtilities.FILE_STRUCTURE_DYNAMIC_PHOTOS)
+                .child(IMAGE_2);
+        this.reference3 = storage.getReference().getRoot()
+                .child(MyUtilities.FILE_STRUCTURE_DYNAMIC_PHOTOS)
+                .child(IMAGE_3);
+        this.reference4 = storage.getReference().getRoot()
+                .child(MyUtilities.FILE_STRUCTURE_DYNAMIC_PHOTOS)
+                .child(IMAGE_4);
+
+    }
+
+    private void loadFourImages(){
+
+        try {
+            fileToDownload1 = File.createTempFile("my_image1", "jpg");
+            fileToDownload2 = File.createTempFile("my_image2", "jpg");
+            fileToDownload3 = File.createTempFile("my_image3", "jpg");
+            fileToDownload4 = File.createTempFile("my_image4", "jpg");
+        } catch (IOException ioe){
+            ioe.printStackTrace();
+        }
+
+        //Picture 1:
+        if(fileToDownload1 != null) {
+            this.reference1.getFile(fileToDownload1).addOnSuccessListener(
+                    new OnSuccessListener<FileDownloadTask.TaskSnapshot>() {
+                        @Override
+                        public void onSuccess(FileDownloadTask.TaskSnapshot taskSnapshot) {
+                            dynamic_image_iv1.setImageURI(Uri.fromFile(fileToDownload1));
+                        }
+                    }
+            );
+        }
+
+        //Picture 2:
+        if(fileToDownload2 != null) {
+            this.reference2.getFile(fileToDownload2).addOnSuccessListener(
+                    new OnSuccessListener<FileDownloadTask.TaskSnapshot>() {
+                        @Override
+                        public void onSuccess(FileDownloadTask.TaskSnapshot taskSnapshot) {
+                            dynamic_image_iv2.setImageURI(Uri.fromFile(fileToDownload2));
+                        }
+                    }
+            );
+        }
+
+        //Picture 3:
+        if(fileToDownload3 != null) {
+            this.reference3.getFile(fileToDownload3).addOnSuccessListener(
+                    new OnSuccessListener<FileDownloadTask.TaskSnapshot>() {
+                        @Override
+                        public void onSuccess(FileDownloadTask.TaskSnapshot taskSnapshot) {
+                            dynamic_image_iv3.setImageURI(Uri.fromFile(fileToDownload3));
+                        }
+                    }
+            );
+        }
+
+        //Picture 4:
+        if(fileToDownload4 != null) {
+            this.reference4.getFile(fileToDownload4).addOnSuccessListener(
+                    new OnSuccessListener<FileDownloadTask.TaskSnapshot>() {
+                        @Override
+                        public void onSuccess(FileDownloadTask.TaskSnapshot taskSnapshot) {
+                            dynamic_image_iv4.setImageURI(Uri.fromFile(fileToDownload4));
+                        }
+                    }
+            );
+        }
+    }
+
+    private void useGlideInstead(){
+        Glide.with(this /* context */)
+                .using(new FirebaseImageLoader())
+                .load(reference4)
+                .into(dynamic_image_iv4);
+    }
+
+}
+```
+
+Layout code is below:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <TextView
+        android:id="@+id/dynamic_images_tv"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="Dev Chosen Pictures Below:"
+        />
+
+    <LinearLayout
+        android:layout_below="@+id/dynamic_images_tv"
+        android:orientation="vertical"
+        android:weightSum="100"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_weight="50"
+            android:weightSum="100"
+            android:layout_width="match_parent"
+            android:layout_height="0dp">
+
+            <ImageView
+                android:id="@+id/dynamic_image_iv1"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="50"
+                android:scaleType="fitXY"
+                />
+
+            <ImageView
+                android:id="@+id/dynamic_image_iv2"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="50"
+                android:scaleType="fitXY"
+                />
+        </LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_weight="50"
+            android:weightSum="100"
+            android:layout_width="match_parent"
+            android:layout_height="0dp">
+
+            <ImageView
+                android:id="@+id/dynamic_image_iv3"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="50"
+                android:scaleType="fitXY"
+                />
+
+            <ImageView
+                android:id="@+id/dynamic_image_iv4"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="50"
+                android:scaleType="fitXY"
+                />
+        </LinearLayout>
+    </LinearLayout>
+</RelativeLayout>
+```
+
+In this activity, we are following the same pattern as the other activities except we are not allowing users to upload to this directory; we are instead only downloading some hard-coded String images from the database. 
+
+If you look at the Firebase console GUI, there is an option to create a folder as well as add files. What I did here was add a new folder with the directory structure: images/dynamic and uploaded 4 photos from my hard drive. 
+
+(SEE IMAGE - 08_dynamic_pictures_example)
+
+The 4 images that I uploaded are then referenced by their String name in this activity. It might not be apparent of what use this all is until you think about the fact that you, the dev, can change the photos in the admin console upon a whim. If you choose to change the photo dynamic_picture_1 and upload a completely different one, the user now has a different photo on this screen without you ever having to update the app. 
+
+Take a quick second to think about how useful that is! This means that you could update Splash screen photos on a daily / hourly / whatever(ly) basis! You could change images in your app at any point and it does not require you to host a server to do so; this is really useful. 
+
+At the bottom of the class you will notice some code that includes "Glide". Glide is a library that sets photos into ImageViews via a url / file. Another sibling library would be something like Picasso. Ravi actually has a great tutorial on Glide [here](http://www.androidhive.info/2016/04/android-glide-image-library-building-image-gallery-app/) that I recommend checking out at some point. 
+You may be asking though, where is Glide coming from if we didn't include it as a dependency in the build.gradle file? Well, that is the reason we added the *** compile 'com.firebaseui:firebase-ui-storage:0.6.0' *** bit of code as Firebase has already built in Glide to their FirebaseUI dependency. 
+
+The reason I included this Glide example is two-fold. First, it shows how much easier it can be and how much less code it is to use this instead of the lengthy reference.getFile() code above it. It is less code overall and results in a cleaner looking project. But, there are drawbacks to it as well. The second reason I included it is to highlight that Glide *will* cache the data/ image. This is both good and bad! It is good because it will save the user possible data usage and load faster, but it is bad because it means the dynamic link will not really be dynamic! If you upload a new image and overwrite the old one, the Glide library will not update to the new image until the caching is deleted (IE the phone gets restarted). So just keep that in mind if you choose to use Glide instead of the SDK getFile() method.
+
+
+That about wraps things up! Firebase is growing rapidly and Google (Alphabet) keeps adding new features all the time. They just recently added testing software for testing your code X times per day. The Firebase Storage toolkit is a useful part of the Firebase Family. Used in conjunction with Firease's other features, you can build  yourself a powerful app with a ton of support. 
+
+Thanks Ravi for the invite to author and thanks for reading. I am Patrick MacDowell (PGMacDesign) and I hope to see you around the Developer Community. 
+

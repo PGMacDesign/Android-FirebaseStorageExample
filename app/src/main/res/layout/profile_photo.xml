@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+
+    <LinearLayout
+        android:id="@+id/name_et_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="100"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentStart="true">
+
+        <EditText
+            android:id="@+id/first_name_et"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="50"
+            android:hint="First Name"
+            />
+
+        <EditText
+            android:id="@+id/last_name_et"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="50"
+            android:hint="Last Name"
+            />
+
+    </LinearLayout>
+
+    <View
+        android:id="@+id/spacer1"
+        android:layout_below="@+id/name_et_layout"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/black"
+        />
+
+    <LinearLayout
+        android:id="@+id/profile_buttons"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="100"
+        android:layout_below="@+id/spacer1"
+        >
+
+        <Button
+            android:id="@+id/upload_profile_picture"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="50"
+            android:text="Upload a Picture"
+            />
+
+        <Button
+            android:id="@+id/download_profile_picture"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="50"
+            android:text="Download a Picture"
+            />
+
+    </LinearLayout>
+
+    <View
+        android:id="@+id/spacer2"
+        android:layout_below="@+id/profile_buttons"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/black"
+        />
+
+
+    <LinearLayout
+        android:id="@+id/profile_tvs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="100"
+        android:layout_below="@+id/spacer2"
+        >
+
+        <TextView
+            android:id="@+id/upload_profile_picture_tv"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:layout_weight="50"
+            android:text=""
+            />
+
+        <TextView
+            android:id="@+id/download_profile_picture_tv"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:layout_weight="50"
+            android:text=""
+            />
+
+    </LinearLayout>
+
+    <View
+        android:id="@+id/spacer3"
+        android:layout_below="@+id/profile_tvs"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/black"
+        />
+
+    <ImageView
+        android:id="@+id/profile_photo"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@+id/spacer3"
+        android:scaleType="fitXY"
+        />
+
+</RelativeLayout>
